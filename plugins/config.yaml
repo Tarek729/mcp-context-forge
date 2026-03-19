@@ -1062,3 +1062,20 @@ plugins:
     conditions: []
     config:
       context_key: jwt_claims
+
+
+  # Version Control Plugin - Track MCP server versions on startup
+  - name: "VersionControl"
+    kind: "plugins.version_control.version_control_plugin.VersionControlPlugin"
+    description: "Performs one-time backfill of MCP server versions on startup"
+    version: "1.0.0"
+    author: "ContextForge Team"
+    hooks: []  # No hooks - runs only on startup via initialize()
+    tags: ["version-control", "tracking", "monitoring"]
+    mode: "permissive"  # Plugin doesn't block requests
+    priority: 100
+    conditions: []
+    config:
+      enabled: true
+      main_db_url: "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp"
+      vc_db_url: "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp_version_control"

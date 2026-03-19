@@ -1,0 +1,20 @@
+name: "VersionControl"
+version: "1.0.0"
+description: "Performs one-time backfill of MCP server versions on startup"
+author: "ContextForge Team"
+hooks: []
+config_schema:
+  enabled:
+    type: boolean
+    default: true
+    description: "Enable/disable version control tracking"
+  main_db_url:
+    type: string
+    required: true
+    description: "Main MCP Gateway database URL (e.g., postgresql://user:pass@host:port/mcp)"
+  vc_db_url:
+    type: string
+    required: true
+    description: "Version control database URL (e.g., postgresql://user:pass@host:port/mcp_version_control)"
+
+# Made with Bob
