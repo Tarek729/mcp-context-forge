@@ -65,6 +65,7 @@ class ServerVersion(Base):
     # Metadata
     tools_count = Column(Integer, nullable=False)
     is_current = Column(Boolean, nullable=False, default=False, index=True)
+    status = Column(String(20), nullable=False, default='active', index=True)
     
     # Audit Fields
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
@@ -836,6 +837,7 @@ class VersionControlCore:
             version_hash=version_hash,
             tools_count=tools_count,
             is_current=True,
+            status='active',
             created_by=created_by
         )
         
@@ -857,6 +859,164 @@ class VersionControlCore:
                 session.rollback()
                 logger.error(f"Failed to create initial version: {e}")
                 raise
+    
+    async def check_for_changes(self, gateway_id: str) -> bool:
+        """
+        Check if a gateway's tools have changed since the last version.
+        
+        Compares current server state with the latest version record to detect changes.
+        
+        Args:
+            gateway_id: Gateway UUID
+            
+        Returns:
+            True if changes detected, False if unchanged
+        """
+        try:
+            # Get the latest version record for this gateway
+            with self.db.get_vc_session() as session:
+                result = session.execute(
+                    select(ServerVersion)
+                    .where(ServerVersion.gateway_id == gateway_id)
+                    .order_by(ServerVersion.version_number.desc())
+                    .limit(1)
+                )
+                latest_version = result.scalar_one_or_none()
+                
+                if not latest_version:
+                    # No version record exists - this shouldn't happen in normal flow
+                    logger.warning(f"No version record found for gateway {gateway_id}")
+                    return False
+                
+                # Store the latest hash for comparison
+                latest_hash = latest_version.version_hash
+                latest_version_number = latest_version.version_number
+            
+            # Get current server info and compute current hash
+            server_info = await self.get_server_info(gateway_id)
+            if not server_info:
+                logger.warning(f"Could not get server info for gateway {gateway_id}")
+                return False
+            
+            # Compute current hashes from live MCP server
+            _current_tools_hash, current_version_hash, current_tools_count = await self.compute_hashes_for_gateway(
+                gateway_id,
+                server_info=server_info
+            )
+            
+            # Compare hashes
+            if current_version_hash != latest_hash:
+                logger.info(
+                    f"🔍 Changes detected for gateway {gateway_id}:\n"
+                    f"  Latest version: {latest_version_number}\n"
+                    f"  Latest hash: {latest_hash[:16]}...\n"
+                    f"  Current hash: {current_version_hash[:16]}...\n"
+                    f"  Tools count: {current_tools_count}"
+                )
+                return True
+            else:
+                logger.info(f"No changes detected for gateway {gateway_id} (version {latest_version_number})")
+                logger.debug(f"No changes detected for gateway {gateway_id} (version {latest_version_number})")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error checking for changes in gateway {gateway_id}: {e}", exc_info=True)
+            return False
+    
+    async def create_pending_version(
+        self,
+        gateway_id: str,
+        created_by: str = "system"
+    ) -> Optional[ServerVersion]:
+        """
+        Create a new pending version record when changes are detected.
+        
+        This is a helper method called by the polling loop when check_for_changes()
+        returns True. The new version will have status='pending' and is_current=True,
+        immediately blocking tool calls until an admin reviews and approves it.
+        
+        Args:
+            gateway_id: Gateway UUID
+            created_by: Email of user/system creating the version
+            
+        Returns:
+            Created ServerVersion instance, or None if failed
+        """
+        try:
+            # Get the latest version number
+            with self.db.get_vc_session() as session:
+                result = session.execute(
+                    select(ServerVersion)
+                    .where(ServerVersion.gateway_id == gateway_id)
+                    .order_by(ServerVersion.version_number.desc())
+                    .limit(1)
+                )
+                latest_version = result.scalar_one_or_none()
+                
+                if not latest_version:
+                    logger.error(f"Cannot create pending version: no existing version found for gateway {gateway_id}")
+                    return None
+                
+                next_version_number = latest_version.version_number + 1
+            
+            # Get current server info and compute hashes
+            server_info = await self.get_server_info(gateway_id)
+            if not server_info:
+                logger.error(f"Cannot create pending version: could not get server info for gateway {gateway_id}")
+                return None
+            
+            # Compute current hashes from live MCP server
+            tools_hash, version_hash, tools_count = await self.compute_hashes_for_gateway(
+                gateway_id,
+                server_info=server_info
+            )
+            
+            # Create pending version record
+            version = ServerVersion(
+                id=str(uuid.uuid4()),
+                gateway_id=gateway_id,
+                server_name=server_info['name'],
+                server_version=server_info['version'],
+                version_number=next_version_number,
+                tools_hash=tools_hash,
+                version_hash=version_hash,
+                tools_count=tools_count,
+                is_current=True,  # Make pending version current to block tool calls
+                status='pending',  # Pending review
+                created_by=created_by
+            )
+            
+            # Save to database
+            with self.db.get_vc_session() as session:
+                try:
+                    # First, mark old version as not current
+                    session.execute(
+                        text("UPDATE server_versions SET is_current = FALSE WHERE gateway_id = :gw AND is_current = TRUE"),
+                        {"gw": gateway_id}
+                    )
+                    
+                    # Then add the new pending version as current
+                    session.add(version)
+                    session.commit()
+                    session.refresh(version)
+                    
+                    logger.info(
+                        f"✅ Created pending version {next_version_number} for gateway {gateway_id}: "
+                        f"{tools_count} tools, hash={version_hash[:16]}..."
+                    )
+                    
+                    # Make version object detached but with all attributes loaded
+                    session.expunge(version)
+                    return version
+                    
+                except SQLAlchemyError as e:
+                    session.rollback()
+                    logger.error(f"Failed to create pending version: {e}")
+                    return None
+                    
+        except Exception as e:
+            logger.error(f"Error creating pending version for gateway {gateway_id}: {e}", exc_info=True)
+            return None
     
     async def backfill_existing_servers(self, created_by: str = "system") -> int:
         """
