@@ -989,9 +989,14 @@ class VersionControlCore:
             # Save to database
             with self.db.get_vc_session() as session:
                 try:
-                    # First, mark old version as not current
+                    # First, mark old version as not current AND deactivate it
+                    # When a new pending version is created, the old version should be deactivated
                     session.execute(
-                        text("UPDATE server_versions SET is_current = FALSE WHERE gateway_id = :gw AND is_current = TRUE"),
+                        text("""
+                            UPDATE server_versions
+                            SET is_current = FALSE, status = 'deactivated'
+                            WHERE gateway_id = :gw AND is_current = TRUE
+                        """),
                         {"gw": gateway_id}
                     )
                     
@@ -1002,7 +1007,7 @@ class VersionControlCore:
                     
                     logger.info(
                         f"✅ Created pending version {next_version_number} for gateway {gateway_id}: "
-                        f"{tools_count} tools, hash={version_hash[:16]}..."
+                        f"{tools_count} tools, hash={version_hash[:16]}... (old version deactivated)"
                     )
                     
                     # Make version object detached but with all attributes loaded

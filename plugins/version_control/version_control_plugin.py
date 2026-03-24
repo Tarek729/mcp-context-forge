@@ -196,7 +196,11 @@ class VersionControlPlugin(Plugin):
     async def tool_pre_invoke(self, payload: ToolPreInvokePayload, context: PluginContext) -> ToolPreInvokeResult:
         """
         Hook called before tool invocation.
-        Blocks tool calls if the server has pending changes or is deactivated.
+        
+        This hook performs real-time change detection:
+        1. Checks if the server has changed since last version
+        2. If changes detected, creates a pending version in the DB
+        3. Blocks tool calls if server has pending changes or is deactivated
         
         Args:
             payload: Tool invocation payload containing tool_name and arguments
@@ -205,8 +209,13 @@ class VersionControlPlugin(Plugin):
         Returns:
             Result indicating whether to allow or block the tool call
         """
+        # CRITICAL DEBUG LOG - This should ALWAYS appear if hook is called
+        self.logger.warning(f"🔥 VERSION CONTROL HOOK CALLED! Tool: {payload.name}")
+        self.logger.warning(f"🔥 Enabled: {self.enabled}, Context: {context.global_context}")
+        
         if not self.enabled:
             # Plugin disabled, allow all calls
+            self.logger.warning("🔥 Plugin is DISABLED, allowing call")
             return ToolPreInvokeResult(
                 continue_processing=True,
                 metadata={"version_control_check": "disabled"}
@@ -222,7 +231,7 @@ class VersionControlPlugin(Plugin):
             )
         
         try:
-            # Query version control database for current version status
+            # STEP 1: Check if this server is tracked
             session = self.db_manager.get_vc_session()
             try:
                 result = session.execute(
@@ -238,33 +247,135 @@ class VersionControlPlugin(Plugin):
                 row = result.fetchone()
                 
                 if not row:
-                    # No version tracking for this server yet, allow call
-                    self.logger.info(f"No version tracking for gateway {gateway_id}, allowing call")
+                    # No version tracking for this server yet!
+                    # This is a NEW server that needs to be backfilled
+                    self.logger.info(f"🆕 New server detected (gateway {gateway_id}), creating initial version...")
+                    
+                    # Create initial version (version 1) for this new server
+                    initial_version = await self.vc_core.create_initial_version(
+                        gateway_id,
+                        created_by="tool_pre_hook"
+                    )
+                    
+                    if initial_version:
+                        self.logger.info(
+                            f"✅ Created initial version for new server: {initial_version.server_name} "
+                            f"(version {initial_version.version_number}, {initial_version.tools_count} tools)"
+                        )
+                        # Now allow the call since we've created version 1 with status='active'
+                        return ToolPreInvokeResult(
+                            continue_processing=True,
+                            metadata={
+                                "version_control_check": "new_server_backfilled",
+                                "version": initial_version.version_number,
+                                "server_name": initial_version.server_name
+                            }
+                        )
+                    else:
+                        # Failed to create initial version, log error but allow call (fail open)
+                        self.logger.error(f"Failed to create initial version for gateway {gateway_id}")
+                        return ToolPreInvokeResult(
+                            continue_processing=True,
+                            metadata={"version_control_check": "backfill_failed"}
+                        )
+                
+                status, version_number, server_name = row
+            finally:
+                session.close()
+            
+            # STEP 2: Real-time change detection - check if server has changed
+            # This ensures we have the latest state before making the tool call
+            has_changes = await self.vc_core.check_for_changes(gateway_id)
+            
+            if has_changes:
+                # STEP 3: Server has changed! Create a pending version in the DB
+                self.logger.warning(
+                    f"🔍 Real-time change detected in {server_name} before tool call, "
+                    f"creating pending version"
+                )
+                
+                pending_version = await self.vc_core.create_pending_version(
+                    gateway_id,
+                    created_by="tool_pre_hook"
+                )
+                
+                if pending_version:
+                    # Successfully created pending version, now block the call
+                    self.logger.warning(
+                        f"Blocking tool call to {server_name}: "
+                        f"changes detected and pending version {pending_version.version_number} created"
+                    )
+                    return ToolPreInvokeResult(
+                        continue_processing=False,
+                        violation=PluginViolation(
+                            reason="Changes detected before tool call",
+                            description=(
+                                f"Tool call blocked: Server '{server_name}' has changed since last approval. "
+                                f"A new pending version {pending_version.version_number} has been created. "
+                                f"Please review and approve the changes before using this tool."
+                            ),
+                            code="VERSION_CONTROL_CHANGES_DETECTED",
+                            details={
+                                "gateway_id": gateway_id,
+                                "server_name": server_name,
+                                "status": "pending",
+                                "version": pending_version.version_number,
+                                "detected_by": "tool_pre_hook"
+                            }
+                        )
+                    )
+                else:
+                    # Failed to create pending version, log error but allow call (fail open)
+                    self.logger.error(
+                        f"Failed to create pending version for {server_name} despite detecting changes"
+                    )
+                    # Fall through to check existing status
+            
+            # STEP 4: No new changes detected, check existing status
+            # Re-query to get the latest status (in case it was just updated)
+            session = self.db_manager.get_vc_session()
+            try:
+                result = session.execute(
+                    text("""
+                        SELECT status, version_number, server_name
+                        FROM server_versions
+                        WHERE gateway_id = :gateway_id
+                          AND is_current = TRUE
+                        LIMIT 1
+                    """),
+                    {"gateway_id": gateway_id}
+                )
+                row = result.fetchone()
+                
+                if not row:
+                    # Shouldn't happen, but handle gracefully
+                    self.logger.warning(f"No current version found for gateway {gateway_id}, allowing call")
                     return ToolPreInvokeResult(
                         continue_processing=True,
-                        metadata={"version_control_check": "not_tracked"}
+                        metadata={"version_control_check": "no_current_version"}
                     )
                 
                 status, version_number, server_name = row
                 
                 # Check status and decide whether to block
                 if status == 'active':
-                    # Server is active, allow the call
+                    # Server is active and no new changes, allow the call
                     return ToolPreInvokeResult(
                         continue_processing=True,
                         metadata={
                             "version_control_check": "passed",
                             "status": status,
                             "version": version_number,
-                            "server_name": server_name
+                            "server_name": server_name,
+                            "changes_checked": True
                         }
                     )
                 
                 elif status == 'pending':
-                    # Changes detected but not approved, BLOCK the call
+                    # Existing pending changes (not newly detected), BLOCK the call
                     self.logger.warning(
                         f"Blocking tool call to {server_name}: "
-                        f"pending changes detected (version {version_number})"
+                        f"pending changes exist (version {version_number})"
                     )
                     return ToolPreInvokeResult(
                         continue_processing=False,
@@ -325,7 +436,7 @@ class VersionControlPlugin(Plugin):
                 
         except Exception as e:
             # Error checking version control, log and allow (fail open)
-            self.logger.error(f"Error checking version control status: {e}", exc_info=True)
+            self.logger.error(f"Error in tool_pre_invoke version control check: {e}", exc_info=True)
             return ToolPreInvokeResult(
                 continue_processing=True,
                 metadata={"version_control_check": "error", "error": str(e)}
