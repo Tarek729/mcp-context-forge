@@ -1093,8 +1093,140 @@ class VersionControlCore:
         logger.info("=" * 60)
         
         return backfilled_count
-
-
+    
+    def list_blocked_versions(self) -> Tuple[List[ServerVersion], int]:
+        """
+        List all blocked versions (pending or deactivated status).
+        
+        This is a convenience method that returns versions requiring
+        administrator attention or approval.
+        
+        Returns:
+            Tuple of (list of ServerVersion objects, total count)
+        """
+        with self.db.get_vc_session() as session:
+            try:
+                # Query for blocked versions
+                query = select(ServerVersion).where(
+                    ServerVersion.status.in_(['pending', 'deactivated'])
+                ).order_by(
+                    ServerVersion.created_at.desc(),
+                    ServerVersion.version_number.desc()
+                )
+                
+                # Execute query
+                result = session.execute(query)
+                versions = result.scalars().all()
+                
+                # Detach objects from session
+                for version in versions:
+                    session.expunge(version)
+                
+                total = len(versions)
+                
+                logger.info(f"Listed {total} blocked version(s)")
+                
+                return versions, total
+                
+            except SQLAlchemyError as e:
+                logger.error(f"Failed to list blocked versions: {e}")
+                raise
+    
+    def update_version_status(
+        self,
+        version_id: str,
+        new_status: str,
+        updated_by: str = "system"
+    ) -> Optional[ServerVersion]:
+        """
+        Update the status of a server version.
+        
+        This method allows administrators to:
+        - Approve pending versions (set status to 'active')
+        - Reject pending versions (set status to 'deactivated')
+        - Deactivate active versions (set status to 'deactivated')
+        
+        Args:
+            version_id: Version UUID to update
+            new_status: New status value (active, pending, or deactivated)
+            updated_by: Email of user performing the update
+            
+        Returns:
+            Updated ServerVersion object or None if not found
+            
+        Raises:
+            ValueError: If new_status is invalid
+        """
+        # Validate status
+        valid_statuses = ['active', 'pending', 'deactivated']
+        if new_status not in valid_statuses:
+            raise ValueError(
+                f"Invalid status '{new_status}'. Must be one of: {', '.join(valid_statuses)}"
+            )
+        
+        with self.db.get_vc_session() as session:
+            try:
+                # Get the version
+                result = session.execute(
+                    select(ServerVersion).where(ServerVersion.id == version_id)
+                )
+                version = result.scalar_one_or_none()
+                
+                if not version:
+                    logger.warning(f"Version {version_id} not found for status update")
+                    return None
+                
+                old_status = version.status
+                server_name = version.server_name
+                gateway_id = version.gateway_id
+                version_number = version.version_number
+                
+                # Update status
+                version.status = new_status
+                
+                # If approving a version (setting to 'active'), delete older deactivated versions
+                # for the same server in the same transaction
+                deleted_count = 0
+                if new_status == 'active':
+                    # Find and delete older deactivated versions for this server
+                    delete_query = select(ServerVersion).where(
+                        ServerVersion.gateway_id == gateway_id,
+                        ServerVersion.status == 'deactivated',
+                        ServerVersion.version_number < version_number
+                    )
+                    old_versions = session.execute(delete_query).scalars().all()
+                    
+                    for old_version in old_versions:
+                        logger.info(
+                            f"Deleting old deactivated version: {server_name} "
+                            f"v{old_version.version_number} (id: {old_version.id})"
+                        )
+                        session.delete(old_version)
+                        deleted_count += 1
+                
+                # Single commit for both status update and cleanup
+                session.commit()
+                session.refresh(version)
+                
+                logger.info(
+                    f"Updated version {version_id} status: {old_status} → {new_status} "
+                    f"(by {updated_by})"
+                )
+                
+                if deleted_count > 0:
+                    logger.info(
+                        f"Deleted {deleted_count} old deactivated version(s) for {server_name}"
+                    )
+                
+                # Detach from session
+                session.expunge(version)
+                return version
+                
+            except SQLAlchemyError as e:
+                session.rollback()
+                logger.error(f"Failed to update version status: {e}")
+                raise
+    
 # ============================================================================
 # EXAMPLE USAGE
 # ============================================================================
