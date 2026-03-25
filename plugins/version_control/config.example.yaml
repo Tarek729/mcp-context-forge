@@ -1,0 +1,30 @@
+# Version Control Plugin Configuration Example
+# Copy this to plugins/config.yaml and adjust the values
+
+plugins:
+  - name: "VersionControl"
+    kind: "plugins.version_control.version_control_plugin.VersionControlPlugin"
+    hooks: []  # No hooks needed - runs only on startup
+    mode: "permissive"  # Plugin doesn't block requests
+    priority: 100
+    config:
+      # Enable/disable the plugin
+      enabled: true
+      
+      # Main MCP Gateway database URL
+      # This is where your gateways and tools are stored
+      # Format: postgresql+psycopg://user:password@host:port/database
+      main_db_url: "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp"
+      
+      # Version Control database URL
+      # This is a SEPARATE database for version history
+      # Format: postgresql+psycopg://user:password@host:port/database
+      vc_db_url: "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp_version_control"
+
+# Notes:
+# 1. Make sure mcp_version_control database exists before starting
+# 2. The plugin will automatically create the server_versions table
+# 3. Both databases should use the same PostgreSQL instance
+# 4. Plugin runs ONCE on startup to backfill existing servers
+
+# Made with Bob
