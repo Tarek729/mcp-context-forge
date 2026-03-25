@@ -1,11 +1,15 @@
 import os
-from typing import List
+import sys
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from mcpgateway.auth import get_current_user
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'plugins', 'version_control'))
+from core.version_control_core import VersionControlCore, VersionControlDB
 
 router = APIRouter(prefix="/api/version-control", tags=["version-control"])
 
@@ -242,4 +246,140 @@ async def delete_versions(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete versions: {str(e)}"
+        )
+
+class CheckChangesResponse(BaseModel):
+    """Response model for check_for_changes endpoint"""
+    gateway_id: str = Field(..., description="Gateway ID that was checked")
+    has_changes: bool = Field(..., description="Whether changes were detected")
+    message: str = Field(..., description="Human-readable message about the check result")
+
+
+class CreatePendingVersionResponse(BaseModel):
+    """Response model for create_pending_version endpoint"""
+    success: bool = Field(..., description="Whether version creation was successful")
+    version: Optional[dict] = Field(None, description="Created version details")
+    message: str = Field(..., description="Human-readable message about the operation")
+
+def get_vc_core():
+    """Get VersionControlCore instance with database manager"""
+    main_db_url = os.getenv("DATABASE_URL", "sqlite:///./mcp.db")
+    vc_db_url = os.getenv(
+        "VC_DATABASE_URL",
+        "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp_version_control"
+    )
+    
+    db_manager = VersionControlDB(
+        main_db_url=main_db_url,
+        vc_db_url=vc_db_url,
+        echo=False
+    )
+    
+    return VersionControlCore(db_manager=db_manager)
+
+
+@router.post(
+    "/check-changes/{gateway_id}",
+    response_model=CheckChangesResponse,
+    summary="Check if gateway tools have changed",
+    description="Compares current server state with the latest version record to detect changes"
+)
+async def check_gateway_changes(
+    gateway_id: str,
+    current_user = Depends(get_current_user)
+):
+    """
+    Check if a gateway's tools have changed since the last version.
+    
+    Args:
+        gateway_id: Gateway UUID to check
+        
+    Returns:
+        CheckChangesResponse with change detection results
+    """
+    try:
+        vc_core = get_vc_core()
+        has_changes = await vc_core.check_for_changes(gateway_id)
+        
+        if has_changes:
+            message = f"Changes detected for gateway {gateway_id}"
+        else:
+            message = f"No changes detected for gateway {gateway_id}"
+        
+        return CheckChangesResponse(
+            gateway_id=gateway_id,
+            has_changes=has_changes,
+            message=message
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check for changes: {str(e)}"
+        )
+
+@router.post(
+    "/create-pending/{gateway_id}",
+    response_model=CreatePendingVersionResponse,
+    summary="Create a pending version for a gateway",
+    description="Creates a new pending version record when changes are detected. The new version will block tool calls until approved."
+)
+async def create_pending_gateway_version(
+    gateway_id: str,
+    current_user = Depends(get_current_user)
+):
+    """
+    Create a new pending version record for a gateway.
+    
+    This endpoint creates a pending version with status='pending' and is_current=True,
+    which will block tool calls until an admin reviews and approves it.
+    
+    Args:
+        gateway_id: Gateway UUID
+        
+    Returns:
+        CreatePendingVersionResponse with creation results
+    """
+    try:
+        # Get user email from current_user
+        user_email = current_user.get("email") or current_user.get("username", "api_user")
+        
+        vc_core = get_vc_core()
+        version = await vc_core.create_pending_version(
+            gateway_id=gateway_id,
+            created_by=user_email
+        )
+        
+        if version:
+            version_dict = {
+                "id": version.id,
+                "gateway_id": version.gateway_id,
+                "server_name": version.server_name,
+                "server_version": version.server_version,
+                "version_number": version.version_number,
+                "tools_hash": version.tools_hash,
+                "version_hash": version.version_hash,
+                "tools_count": version.tools_count,
+                "is_current": version.is_current,
+                "status": version.status,
+                "created_at": str(version.created_at),
+                "created_by": version.created_by
+            }
+            
+            return CreatePendingVersionResponse(
+                success=True,
+                version=version_dict,
+                message=f"Successfully created pending version {version.version_number} for gateway {gateway_id}"
+            )
+        else:
+            return CreatePendingVersionResponse(
+                success=False,
+                version=None,
+                message=f"Failed to create pending version for gateway {gateway_id}"
+            )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create pending version: {str(e)}"
         )
