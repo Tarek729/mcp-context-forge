@@ -1062,21 +1062,3 @@ plugins:
     conditions: []
     config:
       context_key: jwt_claims
-
-
-  # Version Control Plugin - Track MCP server versions with continuous monitoring
-  - name: "VersionControl"
-    kind: "plugins.version_control.version_control_plugin.VersionControlPlugin"
-    description: "Tracks MCP server versions with continuous polling and monitors server status"
-    version: "1.0.0"
-    author: "ContextForge Team"
-    hooks: ["tool_pre_invoke"]  # Hook to check server status before tool execution
-    tags: ["version-control", "tracking", "monitoring"]
-    mode: "enforce"  # Block tool calls when changes are detected
-    priority: 100
-    conditions: []
-    config:
-      enabled: true
-      polling_interval: 60  # Poll for new servers every 60 seconds
-      main_db_url: "{{ env.DATABASE_URL | default('postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp') }}"
-      vc_db_url: "{{ env.VC_DATABASE_URL | default('postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp_version_control') }}"
