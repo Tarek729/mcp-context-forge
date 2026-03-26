@@ -96,6 +96,7 @@ from mcpgateway.observability import init_telemetry
 from mcpgateway.plugins.framework import HttpHookType, PluginError, PluginManager, PluginViolationError
 from mcpgateway.plugins.framework.constants import PLUGIN_VIOLATION_CODE_MAPPING, PluginViolationCode, VALID_HTTP_STATUS_CODES
 from mcpgateway.routers.server_well_known import router as server_well_known_router
+from mcpgateway.routers.version_control_router import router as version_control_router
 from mcpgateway.routers.well_known import router as well_known_router
 from mcpgateway.schemas import (
     A2AAgentCreate,
@@ -10585,6 +10586,7 @@ app.include_router(server_well_known_router, prefix="/servers")
 app.include_router(metrics_router)
 app.include_router(tag_router)
 app.include_router(export_import_router)
+app.include_router(version_control_router)
 
 # Include log search router if structured logging is enabled
 if getattr(settings, "structured_logging_enabled", True):
