@@ -2,7 +2,7 @@ import os
 import sys
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from mcpgateway.auth import get_current_user
@@ -30,15 +30,6 @@ class DeactivatedVersionsResponse(BaseModel):
     """Response model for listing deactivated versions"""
     total: int = Field(..., description="Total number of deactivated versions")
     versions: List[DeactivatedVersion] = Field(..., description="List of deactivated versions")
-
-
-class DeleteVersionResponse(BaseModel):
-    """Response model for delete operation"""
-    success: bool = Field(..., description="Whether deletion was successful")
-    deleted_count: int = Field(..., description="Number of versions deleted")
-    deleted_ids: List[str] = Field(..., description="List of deleted version IDs")
-    activated_count: int = Field(default=0, description="Number of pending versions activated")
-    activated_ids: List[str] = Field(default_factory=list, description="List of activated version IDs")
 
 
 @router.get(
@@ -90,106 +81,6 @@ async def list_deactivated_versions(
         )
 
 
-@router.delete(
-    "/versions",
-    response_model=DeleteVersionResponse,
-    summary="Delete server versions by IDs",
-    description="Deletes one or more server versions from the version control database by their IDs"
-)
-async def delete_versions(
-    ids: List[str] = Query(..., description="List of version IDs to delete"),
-    current_user = Depends(get_current_user)
-):
-    """
-    Delete server versions by their IDs using VersionControlCore.
-    
-    Args:
-        ids: List of version IDs to delete
-        
-    Returns:
-        DeleteVersionResponse with deletion results
-    """
-    if not ids:
-        raise HTTPException(
-            status_code=400,
-            detail="No IDs provided for deletion"
-        )
-    
-    try:
-        vc_core = get_vc_core()
-        
-        # Get the VC database session
-        with vc_core.db.get_vc_session() as session:
-            # Convert string IDs to UUIDs and get versions to delete
-            version_uuids = [uuid.UUID(vid) for vid in ids]
-            
-            from sqlalchemy import select
-            query = select(ServerVersion).where(ServerVersion.id.in_(version_uuids))
-            versions_to_delete = session.execute(query).scalars().all()
-            
-            if not versions_to_delete:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"None of the provided IDs were found: {ids}"
-                )
-            
-            # Track affected servers and deleted IDs
-            affected_servers = set()
-            deleted_ids = []
-            
-            for version in versions_to_delete:
-                affected_servers.add((str(version.gateway_id), version.server_name))
-                deleted_ids.append(str(version.id))
-                session.delete(version)
-            
-            # For each affected server, activate the most recent pending version
-            activated_ids = []
-            for gateway_id_str, server_name in affected_servers:
-                gateway_uuid = uuid.UUID(gateway_id_str)
-                
-                # Find most recent pending version
-                pending_query = select(ServerVersion).where(
-                    ServerVersion.gateway_id == gateway_uuid,
-                    ServerVersion.server_name == server_name,
-                    ServerVersion.status == 'pending'
-                ).order_by(ServerVersion.created_at.desc()).limit(1)
-                
-                pending_version = session.execute(pending_query).scalar_one_or_none()
-                
-                if pending_version:
-                    # Set all versions for this server to is_current=False
-                    all_versions_query = select(ServerVersion).where(
-                        ServerVersion.gateway_id == gateway_uuid,
-                        ServerVersion.server_name == server_name
-                    )
-                    all_versions = session.execute(all_versions_query).scalars().all()
-                    for v in all_versions:
-                        v.is_current = False
-                    
-                    # Activate the pending version
-                    pending_version.status = 'active'
-                    pending_version.is_current = True
-                    activated_ids.append(str(pending_version.id))
-            
-            session.commit()
-            
-            return DeleteVersionResponse(
-                success=True,
-                deleted_count=len(deleted_ids),
-                deleted_ids=deleted_ids,
-                activated_count=len(activated_ids),
-                activated_ids=activated_ids
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to delete versions: {str(e)}"
-        )
-
-
 class UpdateVersionStatusRequest(BaseModel):
     """Request model for updating version status"""
     new_status: str = Field(..., description="New status (active, pending, or deactivated)")
@@ -204,8 +95,8 @@ class UpdateVersionStatusResponse(BaseModel):
     message: str = Field(..., description="Human-readable message about the operation")
 
 
-@router.patch(
-    "/versions/{version_id}/status",
+@router.put(
+    "/versions/{version_id}/update-status",
     response_model=UpdateVersionStatusResponse,
     summary="Update version status",
     description="Update the status of a server version (approve/reject pending versions, deactivate active versions)"
