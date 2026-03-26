@@ -1,36 +1,16 @@
 import os
 import sys
+import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import Session, sessionmaker
 
 from mcpgateway.auth import get_current_user
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'plugins', 'version_control'))
-from core.version_control_core import VersionControlCore, VersionControlDB
+from core.version_control_core import VersionControlCore, VersionControlDB, ServerVersion
 
 router = APIRouter(prefix="/api/version-control", tags=["version-control"])
-
-# Version Control Database Connection
-VC_DATABASE_URL = os.getenv(
-    "VC_DATABASE_URL",
-    "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp_version_control"
-)
-
-# Create engine and session maker for VC database
-vc_engine = create_engine(VC_DATABASE_URL)
-VCSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=vc_engine)
-
-
-def get_vc_db():
-    """Dependency to get version control database session"""
-    db = VCSessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 class DeactivatedVersion(BaseModel):
@@ -68,7 +48,6 @@ class DeleteVersionResponse(BaseModel):
     description="Returns all server versions with status='deactivated' from the version control database"
 )
 async def list_deactivated_versions(
-    db: Session = Depends(get_vc_db),
     current_user = Depends(get_current_user)
 ):
     """
@@ -78,39 +57,25 @@ async def list_deactivated_versions(
         DeactivatedVersionsResponse with list of deactivated versions
     """
     try:
-        # Query deactivated versions from version control database
-        query = text("""
-            SELECT 
-                id::text,
-                gateway_id::text,
-                server_name,
-                server_version,
-                version_number,
-                tools_count,
-                status,
-                created_at::text,
-                created_by
-            FROM server_versions
-            WHERE status = 'deactivated'
-            ORDER BY created_at DESC
-        """)
+        vc_core = get_vc_core()
         
-        result = db.execute(query)
-        rows = result.fetchall()
+        # Use list_blocked_versions and filter for deactivated only
+        all_blocked, _ = vc_core.list_blocked_versions()
+        deactivated_versions = [v for v in all_blocked if v.status == 'deactivated']
         
         versions = [
             DeactivatedVersion(
-                id=row[0],
-                gateway_id=row[1],
-                server_name=row[2],
-                server_version=row[3],
-                version_number=row[4],
-                tools_count=row[5],
-                status=row[6],
-                created_at=row[7],
-                created_by=row[8]
+                id=str(v.id),
+                gateway_id=str(v.gateway_id),
+                server_name=v.server_name,
+                server_version=v.server_version,
+                version_number=v.version_number,
+                tools_count=v.tools_count,
+                status=v.status,
+                created_at=str(v.created_at),
+                created_by=v.created_by
             )
-            for row in rows
+            for v in deactivated_versions
         ]
         
         return DeactivatedVersionsResponse(
@@ -133,11 +98,10 @@ async def list_deactivated_versions(
 )
 async def delete_versions(
     ids: List[str] = Query(..., description="List of version IDs to delete"),
-    db: Session = Depends(get_vc_db),
     current_user = Depends(get_current_user)
 ):
     """
-    Delete server versions by their IDs.
+    Delete server versions by their IDs using VersionControlCore.
     
     Args:
         ids: List of version IDs to delete
@@ -152,97 +116,74 @@ async def delete_versions(
         )
     
     try:
-        # First, get the versions to be deleted to track their gateway_id and server_name
-        check_query = text("""
-            SELECT id::text, gateway_id::text, server_name
-            FROM server_versions
-            WHERE id::text = ANY(:ids)
-        """)
+        vc_core = get_vc_core()
         
-        result = db.execute(check_query, {"ids": ids})
-        rows = result.fetchall()
-        
-        if not rows:
-            raise HTTPException(
-                status_code=404,
-                detail=f"None of the provided IDs were found: {ids}"
-            )
-        
-        existing_ids = [row[0] for row in rows]
-        
-        # Track unique gateway_id + server_name combinations
-        affected_servers = set()
-        for row in rows:
-            affected_servers.add((row[1], row[2]))  # (gateway_id, server_name)
-        
-        # Delete the versions
-        delete_query = text("""
-            DELETE FROM server_versions
-            WHERE id::text = ANY(:ids)
-        """)
-        
-        db.execute(delete_query, {"ids": existing_ids})
-        
-        # For each affected server, activate the most recent pending version
-        activated_ids = []
-        for gateway_id, server_name in affected_servers:
-            # Find the most recent pending version for this server
-            pending_query = text("""
-                SELECT id::text
-                FROM server_versions
-                WHERE gateway_id::text = :gateway_id
-                  AND server_name = :server_name
-                  AND status = 'pending'
-                ORDER BY created_at DESC
-                LIMIT 1
-            """)
+        # Get the VC database session
+        with vc_core.db.get_vc_session() as session:
+            # Convert string IDs to UUIDs and get versions to delete
+            version_uuids = [uuid.UUID(vid) for vid in ids]
             
-            pending_result = db.execute(
-                pending_query,
-                {"gateway_id": gateway_id, "server_name": server_name}
-            )
-            pending_row = pending_result.fetchone()
+            from sqlalchemy import select
+            query = select(ServerVersion).where(ServerVersion.id.in_(version_uuids))
+            versions_to_delete = session.execute(query).scalars().all()
             
-            if pending_row:
-                pending_id = pending_row[0]
-                
-                # First, set all versions for this server to is_current=False
-                update_current_query = text("""
-                    UPDATE server_versions
-                    SET is_current = FALSE
-                    WHERE gateway_id::text = :gateway_id
-                      AND server_name = :server_name
-                """)
-                
-                db.execute(
-                    update_current_query,
-                    {"gateway_id": gateway_id, "server_name": server_name}
+            if not versions_to_delete:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"None of the provided IDs were found: {ids}"
                 )
+            
+            # Track affected servers and deleted IDs
+            affected_servers = set()
+            deleted_ids = []
+            
+            for version in versions_to_delete:
+                affected_servers.add((str(version.gateway_id), version.server_name))
+                deleted_ids.append(str(version.id))
+                session.delete(version)
+            
+            # For each affected server, activate the most recent pending version
+            activated_ids = []
+            for gateway_id_str, server_name in affected_servers:
+                gateway_uuid = uuid.UUID(gateway_id_str)
                 
-                # Then activate the pending version
-                activate_query = text("""
-                    UPDATE server_versions
-                    SET status = 'active', is_current = TRUE
-                    WHERE id::text = :id
-                """)
+                # Find most recent pending version
+                pending_query = select(ServerVersion).where(
+                    ServerVersion.gateway_id == gateway_uuid,
+                    ServerVersion.server_name == server_name,
+                    ServerVersion.status == 'pending'
+                ).order_by(ServerVersion.created_at.desc()).limit(1)
                 
-                db.execute(activate_query, {"id": pending_id})
-                activated_ids.append(pending_id)
-        
-        db.commit()
-        
-        return DeleteVersionResponse(
-            success=True,
-            deleted_count=len(existing_ids),
-            deleted_ids=existing_ids,
-            activated_count=len(activated_ids),
-            activated_ids=activated_ids
-        )
+                pending_version = session.execute(pending_query).scalar_one_or_none()
+                
+                if pending_version:
+                    # Set all versions for this server to is_current=False
+                    all_versions_query = select(ServerVersion).where(
+                        ServerVersion.gateway_id == gateway_uuid,
+                        ServerVersion.server_name == server_name
+                    )
+                    all_versions = session.execute(all_versions_query).scalars().all()
+                    for v in all_versions:
+                        v.is_current = False
+                    
+                    # Activate the pending version
+                    pending_version.status = 'active'
+                    pending_version.is_current = True
+                    activated_ids.append(str(pending_version.id))
+            
+            session.commit()
+            
+            return DeleteVersionResponse(
+                success=True,
+                deleted_count=len(deleted_ids),
+                deleted_ids=deleted_ids,
+                activated_count=len(activated_ids),
+                activated_ids=activated_ids
+            )
         
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to delete versions: {str(e)}"
