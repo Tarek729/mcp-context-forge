@@ -190,6 +190,101 @@ async def delete_versions(
         )
 
 
+class UpdateVersionStatusRequest(BaseModel):
+    """Request model for updating version status"""
+    new_status: str = Field(..., description="New status (active, pending, or deactivated)")
+
+
+class UpdateVersionStatusResponse(BaseModel):
+    """Response model for update version status operation"""
+    success: bool = Field(..., description="Whether update was successful")
+    version_id: str = Field(..., description="Version ID that was updated")
+    old_status: str = Field(..., description="Previous status")
+    new_status: str = Field(..., description="New status")
+    message: str = Field(..., description="Human-readable message about the operation")
+
+
+@router.patch(
+    "/versions/{version_id}/status",
+    response_model=UpdateVersionStatusResponse,
+    summary="Update version status",
+    description="Update the status of a server version (approve/reject pending versions, deactivate active versions)"
+)
+async def update_version_status(
+    version_id: str,
+    request: UpdateVersionStatusRequest,
+    current_user = Depends(get_current_user)
+):
+    """
+    Update the status of a server version using VersionControlCore.
+    
+    This endpoint allows administrators to:
+    - Approve pending versions (set status to 'active')
+    - Reject pending versions (set status to 'deactivated')
+    - Deactivate active versions (set status to 'deactivated')
+    
+    Args:
+        version_id: Version UUID to update
+        request: Request body with new_status
+        
+    Returns:
+        UpdateVersionStatusResponse with update results
+    """
+    try:
+        # Get user email from current_user
+        user_email = current_user.get("email") or current_user.get("username", "api_user")
+        
+        vc_core = get_vc_core()
+        
+        # Get the version before update to track old status
+        with vc_core.db.get_vc_session() as session:
+            from sqlalchemy import select
+            query = select(ServerVersion).where(ServerVersion.id == uuid.UUID(version_id))
+            old_version = session.execute(query).scalar_one_or_none()
+            
+            if not old_version:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Version {version_id} not found"
+                )
+            
+            old_status = old_version.status
+        
+        # Update the version status
+        updated_version = vc_core.update_version_status(
+            version_id=version_id,
+            new_status=request.new_status,
+            updated_by=user_email
+        )
+        
+        if updated_version:
+            return UpdateVersionStatusResponse(
+                success=True,
+                version_id=str(updated_version.id),
+                old_status=old_status,
+                new_status=updated_version.status,
+                message=f"Successfully updated version {version_id} status from '{old_status}' to '{updated_version.status}'"
+            )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Version {version_id} not found"
+            )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update version status: {str(e)}"
+        )
+
+
 class CheckChangesResponse(BaseModel):
     """Response model for check_for_changes endpoint"""
     gateway_id: str = Field(..., description="Gateway ID that was checked")
