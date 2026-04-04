@@ -223,6 +223,22 @@ plugins:
       by_tool:
         search: "10/m"
 
+  # Rate Limiter Demo - Simple demonstration plugin
+  - name: "RateLimiterDemo"
+    kind: "plugins.rate_limiter_demo.rate_limiter.RateLimiterDemoPlugin"
+    description: "Demo rate limiter that limits requests per user"
+    version: "1.0.0"
+    author: "ContextForge Demo"
+    hooks: ["tool_pre_invoke"]
+    tags: ["demo", "rate-limit", "throttle"]
+    mode: "enforce"
+    priority: 50
+    conditions: []
+    config:
+      max_requests: 5
+      time_window: 60
+      block_on_limit: true
+
   # Schema guard for tool args/results (subset JSONSchema)
   - name: "SchemaGuardPlugin"
     kind: "plugins.schema_guard.schema_guard.SchemaGuardPlugin"

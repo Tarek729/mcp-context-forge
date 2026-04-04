@@ -1,0 +1,19 @@
+name: "RateLimiterDemo"
+version: "1.0.0"
+description: "A simple demonstration rate limiter plugin that limits requests per user"
+author: "ContextForge Demo"
+hooks:
+  - tool_pre_invoke
+config_schema:
+  max_requests:
+    type: integer
+    default: 5
+    description: "Maximum number of requests allowed per time window"
+  time_window:
+    type: integer
+    default: 60
+    description: "Time window in seconds"
+  block_on_limit:
+    type: boolean
+    default: true
+    description: "Whether to block requests when limit is exceeded (true) or just log (false)"
