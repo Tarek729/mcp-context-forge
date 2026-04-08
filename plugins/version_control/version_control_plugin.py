@@ -31,7 +31,7 @@ from .core.version_control_core import VersionControlCore, VersionControlDB
 class VersionControlPlugin(Plugin):
     """
     Plugin that tracks MCP server versions and tool changes.
-    
+
     Features:
     - Automatic server discovery on startup
     - Background polling every 60 seconds to detect new servers
@@ -44,21 +44,21 @@ class VersionControlPlugin(Plugin):
         """Initialize the Version Control plugin"""
         super().__init__(config)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
+
         # Get configuration
         plugin_config = config.config or {}
         self.enabled = plugin_config.get("enabled", True)
         self.polling_interval = plugin_config.get("polling_interval", 60)  # seconds
-        
+
         # Database configuration
         main_db_url = plugin_config.get("main_db_url")
         vc_db_url = plugin_config.get("vc_db_url")
-        
+
         if not main_db_url or not vc_db_url:
             self.logger.error("Missing database URLs in plugin config")
             self.enabled = False
             return
-        
+
         # Initialize database manager
         try:
             self.db_manager = VersionControlDB(
@@ -74,14 +74,14 @@ class VersionControlPlugin(Plugin):
             self.logger.error(f"Failed to initialize database: {e}")
             self.enabled = False
             return
-        
+
         # Initialize core logic
         self.vc_core = VersionControlCore(self.db_manager)
-        
+
         # Background polling task
         self._polling_task = None
         self._shutdown_event = asyncio.Event()
-        
+
         self.logger.info("VersionControlPlugin initialized")
 
     async def initialize(self) -> None:
@@ -92,9 +92,9 @@ class VersionControlPlugin(Plugin):
         if not self.enabled:
             self.logger.warning("Version Control plugin is disabled")
             return
-        
+
         self.logger.info("Starting Version Control plugin...")
-        
+
         # Step 1: Backfill existing servers (one-time on startup)
         try:
             self.logger.info("Performing initial server backfill...")
@@ -102,7 +102,7 @@ class VersionControlPlugin(Plugin):
             self.logger.info(f"✅ Initial backfill complete: {backfilled} servers")
         except Exception as e:
             self.logger.error(f"❌ Failed to backfill servers: {e}", exc_info=True)
-        
+
         # Step 2: Start background polling task
         self._polling_task = asyncio.create_task(self._polling_loop())
         self.logger.info(f"✅ Background polling started (interval: {self.polling_interval}s)")
@@ -110,7 +110,7 @@ class VersionControlPlugin(Plugin):
     async def _polling_loop(self) -> None:
         """
         Background task that polls for changes every N seconds.
-        
+
         This task:
         1. Checks for new servers and backfills them (creates version 1)
         2. Checks existing servers for changes and creates pending versions
@@ -118,31 +118,31 @@ class VersionControlPlugin(Plugin):
         while not self._shutdown_event.is_set():
             try:
                 await asyncio.sleep(self.polling_interval)
-                
+
                 # Step 1: Check for new servers and backfill them
                 backfilled = await self.vc_core.backfill_existing_servers(created_by="polling")
                 if backfilled > 0:
                     self.logger.info(f"🔄 Polling: Discovered and backfilled {backfilled} new server(s)")
-                
+
                 # Step 2: Check existing servers for changes
                 gateways = self.vc_core.discover_existing_servers()
                 changes_detected = 0
-                
+
                 for gateway in gateways:
                     gateway_id = gateway['id']
                     gateway_name = gateway['name']
-                    
+
                     try:
                         # Check if this server has changes
                         has_changes = await self.vc_core.check_for_changes(gateway_id)
-                        
+
                         if has_changes:
                             # Create pending version
                             pending_version = await self.vc_core.create_pending_version(
                                 gateway_id,
                                 created_by="polling"
                             )
-                            
+
                             if pending_version:
                                 self.logger.info(
                                     f"🔍 Polling: Changes detected in {gateway_name}, "
@@ -161,13 +161,13 @@ class VersionControlPlugin(Plugin):
                         )
                         # Continue with next gateway
                         continue
-                
+
                 if changes_detected > 0:
                     self.logger.info(
                         f"🔄 Polling: Detected changes in {changes_detected} server(s), "
                         f"created pending versions"
                     )
-                    
+
             except asyncio.CancelledError:
                 self.logger.info("Polling task cancelled")
                 break
@@ -181,7 +181,7 @@ class VersionControlPlugin(Plugin):
         Stops the background polling task.
         """
         self.logger.info("Shutting down Version Control plugin...")
-        
+
         # Signal shutdown and wait for polling task to finish
         self._shutdown_event.set()
         if self._polling_task:
@@ -190,29 +190,29 @@ class VersionControlPlugin(Plugin):
                 await self._polling_task
             except asyncio.CancelledError:
                 pass
-        
+
         self.logger.info("Version Control plugin shutdown complete")
 
     async def tool_pre_invoke(self, payload: ToolPreInvokePayload, context: PluginContext) -> ToolPreInvokeResult:
         """
         Hook called before tool invocation.
-        
+
         This hook performs real-time change detection:
         1. Checks if the server has changed since last version
         2. If changes detected, creates a pending version in the DB
         3. Blocks tool calls if server has pending changes or is deactivated
-        
+
         Args:
             payload: Tool invocation payload containing tool_name and arguments
             context: Plugin context with server information (includes server_id as gateway_id)
-            
+
         Returns:
             Result indicating whether to allow or block the tool call
         """
         # CRITICAL DEBUG LOG - This should ALWAYS appear if hook is called
         self.logger.warning(f"🔥 VERSION CONTROL HOOK CALLED! Tool: {payload.name}")
         self.logger.warning(f"🔥 Enabled: {self.enabled}, Context: {context.global_context}")
-        
+
         if not self.enabled:
             # Plugin disabled, allow all calls
             self.logger.warning("🔥 Plugin is DISABLED, allowing call")
@@ -220,7 +220,7 @@ class VersionControlPlugin(Plugin):
                 continue_processing=True,
                 metadata={"version_control_check": "disabled"}
             )
-        
+
         # Extract gateway_id from context.global_context.server_id
         gateway_id = context.global_context.server_id
         if not gateway_id:
@@ -229,7 +229,7 @@ class VersionControlPlugin(Plugin):
                 continue_processing=True,
                 metadata={"version_control_check": "no_server_id"}
             )
-        
+
         try:
             # STEP 1: Check if this server is tracked
             session = self.db_manager.get_vc_session()
@@ -245,18 +245,18 @@ class VersionControlPlugin(Plugin):
                     {"gateway_id": gateway_id}
                 )
                 row = result.fetchone()
-                
+
                 if not row:
                     # No version tracking for this server yet!
                     # This is a NEW server that needs to be backfilled
                     self.logger.info(f"🆕 New server detected (gateway {gateway_id}), creating initial version...")
-                    
+
                     # Create initial version (version 1) for this new server
                     initial_version = await self.vc_core.create_initial_version(
                         gateway_id,
                         created_by="tool_pre_hook"
                     )
-                    
+
                     if initial_version:
                         self.logger.info(
                             f"✅ Created initial version for new server: {initial_version.server_name} "
@@ -278,27 +278,27 @@ class VersionControlPlugin(Plugin):
                             continue_processing=True,
                             metadata={"version_control_check": "backfill_failed"}
                         )
-                
+
                 status, version_number, server_name = row
             finally:
                 session.close()
-            
+
             # STEP 2: Real-time change detection - check if server has changed
             # This ensures we have the latest state before making the tool call
             has_changes = await self.vc_core.check_for_changes(gateway_id)
-            
+
             if has_changes:
                 # STEP 3: Server has changed! Create a pending version in the DB
                 self.logger.warning(
                     f"🔍 Real-time change detected in {server_name} before tool call, "
                     f"creating pending version"
                 )
-                
+
                 pending_version = await self.vc_core.create_pending_version(
                     gateway_id,
                     created_by="tool_pre_hook"
                 )
-                
+
                 if pending_version:
                     # Successfully created pending version, now block the call
                     self.logger.warning(
@@ -330,7 +330,7 @@ class VersionControlPlugin(Plugin):
                         f"Failed to create pending version for {server_name} despite detecting changes"
                     )
                     # Fall through to check existing status
-            
+
             # STEP 4: No new changes detected, check existing status
             # Re-query to get the latest status (in case it was just updated)
             session = self.db_manager.get_vc_session()
@@ -346,7 +346,7 @@ class VersionControlPlugin(Plugin):
                     {"gateway_id": gateway_id}
                 )
                 row = result.fetchone()
-                
+
                 if not row:
                     # Shouldn't happen, but handle gracefully
                     self.logger.warning(f"No current version found for gateway {gateway_id}, allowing call")
@@ -354,9 +354,9 @@ class VersionControlPlugin(Plugin):
                         continue_processing=True,
                         metadata={"version_control_check": "no_current_version"}
                     )
-                
+
                 status, version_number, server_name = row
-                
+
                 # Check status and decide whether to block
                 if status == 'active':
                     # Server is active and no new changes, allow the call
@@ -370,7 +370,7 @@ class VersionControlPlugin(Plugin):
                             "changes_checked": True
                         }
                     )
-                
+
                 elif status == 'pending':
                     # Existing pending changes (not newly detected), BLOCK the call
                     self.logger.warning(
@@ -395,7 +395,7 @@ class VersionControlPlugin(Plugin):
                             }
                         )
                     )
-                
+
                 elif status == 'deactivated':
                     # Server explicitly deactivated, BLOCK the call
                     self.logger.warning(
@@ -419,7 +419,7 @@ class VersionControlPlugin(Plugin):
                             }
                         )
                     )
-                
+
                 else:
                     # Unknown status, log warning and allow (fail open)
                     self.logger.warning(f"Unknown status '{status}' for gateway {gateway_id}, allowing call")
@@ -430,10 +430,10 @@ class VersionControlPlugin(Plugin):
                             "status": status
                         }
                     )
-                    
+
             finally:
                 session.close()
-                
+
         except Exception as e:
             # Error checking version control, log and allow (fail open)
             self.logger.error(f"Error in tool_pre_invoke version control check: {e}", exc_info=True)

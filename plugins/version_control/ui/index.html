@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Version Control Approval Workflow - ContextForge</title>
+
+    <!-- IBM Carbon Design System CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/carbon-components@10.58.0/css/carbon-components.min.css">
+
+    <!-- Custom styles -->
+    <link rel="stylesheet" href="styles.css">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🔄%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+    <!-- Header -->
+    <header class="bx--header" role="banner" aria-label="ContextForge Version Control">
+        <a class="bx--header__name" href="#" prefix="">
+            <span class="bx--header__name--prefix">ContextForge&nbsp;</span>
+            Version Control
+        </a>
+        <nav class="bx--header__nav" aria-label="Version Control">
+            <ul class="bx--header__menu-bar" aria-label="Version Control">
+                <li>
+                    <a class="bx--header__menu-item" href="#pending">Pending Approvals</a>
+                </li>
+                <li>
+                    <a class="bx--header__menu-item" href="#active">Active</a>
+                </li>
+                <li>
+                    <a class="bx--header__menu-item" href="#deactivated">Deactivated</a>
+                </li>
+                <li>
+                    <a class="bx--header__menu-item" href="#settings">Settings</a>
+                </li>
+            </ul>
+        </nav>
+        <div class="bx--header__global">
+            <div class="header-last-updated">
+                <span class="last-updated-label">Last Updated:</span>
+                <span class="last-updated-time" id="lastUpdated">-</span>
+            </div>
+            <button class="bx--header__action" aria-label="Refresh" title="Refresh data" id="refreshBtn">
+                <svg focusable="false" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="20" height="20" viewBox="0 0 32 32" aria-hidden="true">
+                    <path d="M26,18A10,10,0,1,1,16,8h6.1816l-3.5843,3.5859L20,13l6-6L20,1,18.5977,2.4141,22.1816,6H16a12,12,0,1,0,12,12Z"></path>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="bx--content">
+        <div class="bx--grid bx--grid--full-width">
+            <!-- Settings Panel (Initially Hidden) -->
+            <div class="bx--row" id="settingsPanel" style="display: none;">
+                <div class="bx--col-lg-12">
+                    <div class="bx--tile settings-tile">
+                        <h3 class="settings-title">API Configuration</h3>
+                        <form id="settingsForm">
+                            <div class="bx--form-item">
+                                <label for="apiUrl" class="bx--label">API Base URL</label>
+                                <input id="apiUrl" type="text" class="bx--text-input" placeholder="http://localhost:4444" value="http://localhost:4444">
+                            </div>
+                            <div class="bx--form-item">
+                                <label for="bearerToken" class="bx--label">Bearer Token</label>
+                                <input id="bearerToken" type="password" class="bx--text-input" placeholder="Enter your JWT token">
+                                <div class="bx--form__helper-text">
+                                    Generate token: <code>python -m mcpgateway.utils.create_jwt_token --username admin@example.com --exp 10080 --secret YOUR_SECRET</code>
+                                </div>
+                            </div>
+                            <button type="submit" class="bx--btn bx--btn--primary">Save Settings</button>
+                            <button type="button" class="bx--btn bx--btn--secondary" id="testConnectionBtn">Test Connection</button>
+                        </form>
+                        <div id="connectionStatus" class="connection-status"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics Row -->
+            <div class="bx--row stats-row">
+                <div class="bx--col-lg-4 bx--col-md-4">
+                    <div class="bx--tile stat-tile">
+                        <div class="stat-label">Pending Approvals</div>
+                        <div class="stat-value" id="pendingCount">-</div>
+                    </div>
+                </div>
+                <div class="bx--col-lg-4 bx--col-md-4">
+                    <div class="bx--tile stat-tile">
+                        <div class="stat-label">Active</div>
+                        <div class="stat-value" id="activeCount">-</div>
+                    </div>
+                </div>
+                <div class="bx--col-lg-4 bx--col-md-4">
+                    <div class="bx--tile stat-tile">
+                        <div class="stat-label">Deactivated</div>
+                        <div class="stat-value" id="deactivatedCount">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pending Versions Section -->
+            <div class="bx--row section-row" id="pending">
+                <div class="bx--col-lg-12">
+                    <h2 class="section-title">Pending Approvals</h2>
+                    <div id="pendingVersions" class="versions-container">
+                        <div class="loading-state">
+                            <div class="bx--loading">
+                                <svg class="bx--loading__svg" viewBox="0 0 100 100">
+                                    <circle class="bx--loading__stroke" cx="50%" cy="50%" r="44"></circle>
+                                </svg>
+                            </div>
+                            <p>Loading pending versions...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Versions Section -->
+            <div class="bx--row section-row" id="active">
+                <div class="bx--col-lg-12">
+                    <h2 class="section-title">Active Versions</h2>
+                    <div id="activeVersions" class="versions-container">
+                        <div class="loading-state">
+                            <div class="bx--loading">
+                                <svg class="bx--loading__svg" viewBox="0 0 100 100">
+                                    <circle class="bx--loading__stroke" cx="50%" cy="50%" r="44"></circle>
+                                </svg>
+                            </div>
+                            <p>Loading active versions...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Deactivated Versions Section -->
+            <div class="bx--row section-row" id="deactivated">
+                <div class="bx--col-lg-12">
+                    <h2 class="section-title">Deactivated Versions</h2>
+                    <div id="deactivatedVersions" class="versions-container">
+                        <div class="loading-state">
+                            <div class="bx--loading">
+                                <svg class="bx--loading__svg" viewBox="0 0 100 100">
+                                    <circle class="bx--loading__stroke" cx="50%" cy="50%" r="44"></circle>
+                                </svg>
+                            </div>
+                            <p>Loading deactivated versions...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="bx--modal" id="confirmModal" tabindex="-1" role="dialog" aria-labelledby="confirmModalHeading" aria-modal="true">
+        <div class="bx--modal-container">
+            <div class="bx--modal-header">
+                <h3 class="bx--modal-header__heading" id="confirmModalHeading">Confirm Action</h3>
+                <button class="bx--modal-close" type="button" data-modal-close aria-label="Close modal">
+                    <svg focusable="false" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="16" height="16" viewBox="0 0 32 32" aria-hidden="true">
+                        <path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="bx--modal-content">
+                <p id="confirmModalMessage"></p>
+            </div>
+            <div class="bx--modal-footer">
+                <button class="bx--btn bx--btn--secondary" type="button" data-modal-close>Cancel</button>
+                <button class="bx--btn bx--btn--primary" type="button" id="confirmModalAction">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div class="bx--toast-notification bx--toast-notification--success" role="alert" id="notificationToast" style="display: none;">
+        <div class="bx--toast-notification__details">
+            <h3 class="bx--toast-notification__title" id="notificationTitle">Success</h3>
+            <p class="bx--toast-notification__subtitle" id="notificationMessage"></p>
+        </div>
+        <button class="bx--toast-notification__close-button" type="button" aria-label="Close notification">
+            <svg focusable="false" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg" fill="currentColor" width="16" height="16" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M24 9.4L22.6 8 16 14.6 9.4 8 8 9.4 14.6 16 8 22.6 9.4 24 16 17.4 22.6 24 24 22.6 17.4 16 24 9.4z"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- IBM Carbon Components JavaScript -->
+    <script src="https://unpkg.com/carbon-components@10.58.0/scripts/carbon-components.min.js"></script>
+
+    <!-- Application JavaScript -->
+    <script src="app.js"></script>
+</body>
+</html>
