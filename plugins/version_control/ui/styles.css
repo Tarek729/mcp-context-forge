@@ -1,0 +1,585 @@
+/**
+ * Version Control Approval Workflow UI - Custom Styles
+ * Extends IBM Carbon Design System
+ */
+
+:root {
+    --primary-color: #0f62fe;
+    --success-color: #24a148;
+    --danger-color: #da1e28;
+    --warning-color: #f1c21b;
+    --pending-color: #ff832b;
+    --deactivated-color: #8d8d8d;
+    --background-color: #f4f4f4;
+    --card-background: #ffffff;
+    --text-primary: #161616;
+    --text-secondary: #525252;
+    --border-color: #e0e0e0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'IBM Plex Sans', 'Helvetica Neue', Arial, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-primary);
+}
+
+/* Header Customization */
+.bx--header {
+    background-color: #161616;
+    border-bottom: 1px solid #393939;
+}
+
+.bx--header__name {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.bx--header__name--prefix {
+    font-weight: 400;
+    opacity: 0.8;
+}
+
+.header-last-updated {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 1rem;
+    color: #f4f4f4;
+    font-size: 0.875rem;
+}
+
+.last-updated-label {
+    color: #c6c6c6;
+}
+
+.last-updated-time {
+    color: #ffffff;
+    font-weight: 500;
+}
+
+/* Content Area */
+.bx--content {
+    padding: 2rem 0;
+    min-height: calc(100vh - 48px);
+}
+
+/* Statistics Row */
+.stats-row {
+    margin-bottom: 2rem;
+}
+
+.stat-tile {
+    padding: 1.5rem;
+    text-align: center;
+    background: linear-gradient(135deg, var(--card-background) 0%, #fafafa 100%);
+    border-left: 4px solid var(--primary-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-tile:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+.stat-value {
+    font-size: 2.5rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+.stat-time {
+    font-size: 1.25rem;
+    color: var(--text-primary);
+}
+
+/* Section Styling */
+.section-row {
+    margin-bottom: 3rem;
+}
+
+.section-title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--primary-color);
+    padding-bottom: 0.5rem;
+}
+
+/* Versions Container */
+.versions-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .versions-container {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Version Card */
+.version-card {
+    padding: 1.5rem;
+    background: var(--card-background);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.version-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.3s ease;
+}
+
+.version-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.version-card:hover::before {
+    width: 6px;
+}
+
+.version-card.status-pending::before {
+    background: var(--pending-color);
+}
+
+.version-card.status-deactivated::before {
+    background: var(--deactivated-color);
+}
+
+/* Version Header */
+.version-header {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.version-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.version-title h4 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.version-badges {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.version-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    background: var(--primary-color);
+    color: white;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-badge.status-pending {
+    background: rgba(255, 131, 43, 0.1);
+    color: var(--pending-color);
+    border: 1px solid var(--pending-color);
+}
+
+.status-badge.status-active {
+    background: rgba(36, 161, 72, 0.1);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.status-badge.status-deactivated {
+    background: rgba(141, 141, 141, 0.1);
+    color: var(--deactivated-color);
+    border: 1px solid var(--deactivated-color);
+}
+
+/* Version Details */
+.version-details {
+    margin-bottom: 1.5rem;
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f4f4f4;
+}
+
+.detail-row:last-child {
+    border-bottom: none;
+}
+
+.detail-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.detail-value {
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    font-weight: 400;
+    text-align: right;
+    max-width: 60%;
+    word-break: break-word;
+}
+
+.version-id {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.75rem;
+}
+
+/* Version Actions */
+.version-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+}
+
+.version-actions button {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Settings Panel */
+.settings-tile {
+    padding: 2rem;
+    margin-bottom: 2rem;
+    background: var(--card-background);
+}
+
+.settings-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+}
+
+.bx--form-item {
+    margin-bottom: 1.5rem;
+}
+
+.bx--form__helper-text {
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.bx--form__helper-text code {
+    background: #f4f4f4;
+    padding: 0.125rem 0.25rem;
+    border-radius: 2px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+}
+
+/* Connection Status */
+.connection-status {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 4px;
+}
+
+.connection-success {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.connection-error {
+    color: var(--danger-color);
+    font-weight: 600;
+}
+
+/* Loading State */
+.loading-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.loading-state p {
+    margin-top: 1rem;
+    color: var(--text-secondary);
+}
+
+/* Empty State */
+.empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+}
+
+.empty-state svg {
+    opacity: 0.3;
+    margin-bottom: 1rem;
+}
+
+.empty-state h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 1rem 0 0.5rem;
+    color: var(--text-primary);
+}
+
+.empty-state p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Error State */
+.error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4rem 2rem;
+    text-align: center;
+}
+
+.error-state svg {
+    color: var(--danger-color);
+    margin-bottom: 1rem;
+}
+
+.error-state h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin: 1rem 0 0.5rem;
+    color: var(--text-primary);
+}
+
+.error-state p {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+/* Modal Customization */
+.bx--modal.is-visible {
+    display: flex;
+}
+
+.bx--modal-container {
+    max-width: 600px;
+}
+
+/* Notification Toast */
+#notificationToast {
+    position: fixed;
+    top: 4rem;
+    right: 1rem;
+    z-index: 9999;
+    min-width: 300px;
+    max-width: 500px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Button Customizations */
+.bx--btn--sm {
+    min-height: 2rem;
+    padding: 0.375rem 1rem;
+}
+
+.approve-btn {
+    background-color: var(--success-color);
+}
+
+.approve-btn:hover {
+    background-color: #1e8e3e;
+}
+
+.reject-btn {
+    background-color: var(--danger-color);
+}
+
+.reject-btn:hover {
+    background-color: #ba1b23;
+}
+
+/* Responsive Design */
+@media (max-width: 1056px) {
+    .bx--content {
+        padding: 1.5rem 0;
+    }
+    
+    .stat-value {
+        font-size: 2rem;
+    }
+    
+    .section-title {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 672px) {
+    .bx--content {
+        padding: 1rem 0;
+    }
+    
+    .stats-row {
+        margin-bottom: 1rem;
+    }
+    
+    .stat-tile {
+        padding: 1rem;
+    }
+    
+    .stat-value {
+        font-size: 1.75rem;
+    }
+    
+    .version-card {
+        padding: 1rem;
+    }
+    
+    .version-actions {
+        flex-direction: column;
+    }
+    
+    .version-actions button {
+        width: 100%;
+    }
+    
+    #notificationToast {
+        right: 0.5rem;
+        left: 0.5rem;
+        min-width: auto;
+    }
+}
+
+/* Accessibility */
+.bx--btn:focus,
+.bx--text-input:focus,
+.bx--header__action:focus {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* Print Styles */
+@media print {
+    .bx--header,
+    .version-actions,
+    #notificationToast,
+    #settingsPanel {
+        display: none !important;
+    }
+    
+    .version-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
+
+/* Dark Mode Support (Optional) */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background-color: #161616;
+        --card-background: #262626;
+        --text-primary: #f4f4f4;
+        --text-secondary: #c6c6c6;
+        --border-color: #393939;
+    }
+    
+    .stat-tile {
+        background: linear-gradient(135deg, var(--card-background) 0%, #2d2d2d 100%);
+    }
+    
+    .detail-row {
+        border-bottom-color: #393939;
+    }
+    
+    .bx--form__helper-text code {
+        background: #393939;
+    }
+}
+
+/* Smooth Scrolling */
+html {
+    scroll-behavior: smooth;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--background-color);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* Made with Bob */

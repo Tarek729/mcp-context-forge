@@ -33,6 +33,116 @@ class DeactivatedVersionsResponse(BaseModel):
 
 
 @router.get(
+    "/pending",
+    response_model=DeactivatedVersionsResponse,
+    summary="List all pending server versions",
+    description="Returns all server versions with status='pending' awaiting approval"
+)
+async def list_pending_versions(
+    current_user = Depends(get_current_user)
+):
+    """
+    List all pending server versions awaiting approval.
+    
+    Returns:
+        DeactivatedVersionsResponse with list of pending versions
+    """
+    try:
+        vc_core = get_vc_core()
+        
+        # Get all blocked versions and filter for pending only
+        all_blocked, _ = vc_core.list_blocked_versions()
+        pending_versions = [v for v in all_blocked if v.status == 'pending']
+        
+        versions = [
+            DeactivatedVersion(
+                id=str(v.id),
+                gateway_id=str(v.gateway_id),
+                server_name=v.server_name,
+                server_version=v.server_version,
+                version_number=v.version_number,
+                tools_count=v.tools_count,
+                status=v.status,
+                created_at=str(v.created_at),
+                created_by=v.created_by
+            )
+            for v in pending_versions
+        ]
+        
+        return DeactivatedVersionsResponse(
+            total=len(versions),
+            versions=versions
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch pending versions: {str(e)}"
+        )
+
+
+@router.get(
+    "/active",
+    response_model=DeactivatedVersionsResponse,
+    summary="List all active server versions",
+    description="Returns all server versions with status='active' from the version control database"
+)
+async def list_active_versions(
+    current_user = Depends(get_current_user)
+):
+    """
+    List all active server versions.
+    
+    Returns:
+        DeactivatedVersionsResponse with list of active versions
+    """
+    try:
+        vc_core = get_vc_core()
+        
+        # Query for active versions
+        with vc_core.db.get_vc_session() as session:
+            from sqlalchemy import select
+            query = select(ServerVersion).where(
+                ServerVersion.status == 'active'
+            ).order_by(
+                ServerVersion.created_at.desc(),
+                ServerVersion.version_number.desc()
+            )
+            result = session.execute(query)
+            active_versions_list = result.scalars().all()
+            
+            # Detach from session
+            for v in active_versions_list:
+                session.expunge(v)
+        
+        versions = [
+            DeactivatedVersion(
+                id=str(v.id),
+                gateway_id=str(v.gateway_id),
+                server_name=v.server_name,
+                server_version=v.server_version,
+                version_number=v.version_number,
+                tools_count=v.tools_count,
+                status=v.status,
+                created_at=str(v.created_at),
+                created_by=v.created_by
+            )
+            for v in active_versions_list
+        ]
+        
+        return DeactivatedVersionsResponse(
+            total=len(versions),
+            versions=versions
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch active versions: {str(e)}"
+        )
+
+
+@router.get(
     "/deactivated",
     response_model=DeactivatedVersionsResponse,
     summary="List all deactivated server versions",
@@ -50,7 +160,7 @@ async def list_deactivated_versions(
     try:
         vc_core = get_vc_core()
         
-        # Use list_blocked_versions and filter for deactivated only
+        # Get all blocked versions and filter for deactivated only
         all_blocked, _ = vc_core.list_blocked_versions()
         deactivated_versions = [v for v in all_blocked if v.status == 'deactivated']
         
@@ -122,15 +232,16 @@ async def update_version_status(
         UpdateVersionStatusResponse with update results
     """
     try:
-        # Get user email from current_user
-        user_email = current_user.get("email") or current_user.get("username", "api_user")
+        # Get user email from current_user (EmailUser object)
+        user_email = getattr(current_user, "email", None) or getattr(current_user, "username", "api_user")
         
         vc_core = get_vc_core()
         
         # Get the version before update to track old status
         with vc_core.db.get_vc_session() as session:
             from sqlalchemy import select
-            query = select(ServerVersion).where(ServerVersion.id == uuid.UUID(version_id))
+            # Compare as string since id column is String(36), not UUID type
+            query = select(ServerVersion).where(ServerVersion.id == version_id)
             old_version = session.execute(query).scalar_one_or_none()
             
             if not old_version:
@@ -204,6 +315,11 @@ def get_vc_core():
         echo=False
     )
     
+    # Initialize the VC database engine and session
+    # This must be called before using get_vc_session()
+    db_manager.create_database_if_not_exists()
+    db_manager.create_tables()
+    
     return VersionControlCore(db_manager=db_manager)
 
 
@@ -271,8 +387,8 @@ async def create_pending_gateway_version(
         CreatePendingVersionResponse with creation results
     """
     try:
-        # Get user email from current_user
-        user_email = current_user.get("email") or current_user.get("username", "api_user")
+        # Get user email from current_user (EmailUser object)
+        user_email = getattr(current_user, "email", None) or getattr(current_user, "username", "api_user")
         
         vc_core = get_vc_core()
         version = await vc_core.create_pending_version(
