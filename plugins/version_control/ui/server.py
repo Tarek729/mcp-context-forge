@@ -13,14 +13,14 @@ PORT = 8080
 
 class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     """Custom handler to add CORS headers for local development"""
-    
+
     def end_headers(self):
         # Add CORS headers for local development
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         super().end_headers()
-    
+
     def do_OPTIONS(self):
         """Handle preflight requests"""
         self.send_response(200)
@@ -29,7 +29,7 @@ class MyHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
 def main():
     # Change to the directory containing this script
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
+
     print(f"""
 ╔══════════════════════════════════════════════════════════════╗
 ║  Version Control Approval Workflow UI                       ║
@@ -53,7 +53,7 @@ def main():
 
 Press Ctrl+C to stop the server
 """)
-    
+
     try:
         with socketserver.TCPServer(("", PORT), MyHTTPRequestHandler) as httpd:
             httpd.serve_forever()

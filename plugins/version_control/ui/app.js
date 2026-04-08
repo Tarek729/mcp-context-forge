@@ -12,17 +12,17 @@ class VersionControlApp {
         this.deactivatedVersions = [];
         this.modal = null;
         this.currentAction = null;
-        
+
         this.init();
     }
 
     init() {
         // Load saved settings
         this.loadSettings();
-        
+
         // Initialize event listeners
         this.initEventListeners();
-        
+
         // Load data if token is configured
         if (this.bearerToken) {
             this.loadAllData();
@@ -30,7 +30,7 @@ class VersionControlApp {
             this.showSettings();
             this.showNotification('Please configure your API settings', 'warning');
         }
-        
+
         // Auto-refresh every 30 seconds
         setInterval(() => {
             if (this.bearerToken) {
@@ -89,10 +89,10 @@ class VersionControlApp {
     saveSettings() {
         this.apiUrl = document.getElementById('apiUrl').value.trim();
         this.bearerToken = document.getElementById('bearerToken').value.trim();
-        
+
         localStorage.setItem('apiUrl', this.apiUrl);
         localStorage.setItem('bearerToken', this.bearerToken);
-        
+
         this.showNotification('Settings saved successfully', 'success');
         this.loadAllData();
     }
@@ -109,7 +109,7 @@ class VersionControlApp {
     async testConnection() {
         const statusDiv = document.getElementById('connectionStatus');
         statusDiv.innerHTML = '<div class="bx--loading bx--loading--small"><svg class="bx--loading__svg" viewBox="0 0 100 100"><circle class="bx--loading__stroke" cx="50%" cy="50%" r="44"></circle></svg></div> Testing connection...';
-        
+
         try {
             const response = await fetch(`${this.apiUrl}/api/version-control/pending`, {
                 method: 'GET',
@@ -139,7 +139,7 @@ class VersionControlApp {
             this.loadActiveVersions(),
             this.loadDeactivatedVersions()
         ]);
-        
+
         this.updateStatistics();
         this.updateLastUpdated();
     }
@@ -148,7 +148,7 @@ class VersionControlApp {
         try {
             const response = await this.apiRequest('/api/version-control/pending');
             const data = await response.json();
-            
+
             // All versions from /pending endpoint are pending status
             this.pendingVersions = data.versions;
             this.renderPendingVersions();
@@ -161,7 +161,7 @@ class VersionControlApp {
         try {
             const response = await this.apiRequest('/api/version-control/active');
             const data = await response.json();
-            
+
             // All versions from /active endpoint are active status
             this.activeVersions = data.versions;
             this.renderActiveVersions();
@@ -174,7 +174,7 @@ class VersionControlApp {
         try {
             const response = await this.apiRequest('/api/version-control/deactivated');
             const data = await response.json();
-            
+
             // All versions from /deactivated endpoint are deactivated status
             this.deactivatedVersions = data.versions;
             this.renderDeactivatedVersions();
@@ -185,7 +185,7 @@ class VersionControlApp {
 
     renderPendingVersions() {
         const container = document.getElementById('pendingVersions');
-        
+
         if (this.pendingVersions.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -200,14 +200,14 @@ class VersionControlApp {
         }
 
         container.innerHTML = this.pendingVersions.map(version => this.renderVersionCard(version, true)).join('');
-        
+
         // Attach event listeners to action buttons
         this.attachVersionActionListeners();
     }
 
     renderActiveVersions() {
         const container = document.getElementById('activeVersions');
-        
+
         if (this.activeVersions.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -222,14 +222,14 @@ class VersionControlApp {
         }
 
         container.innerHTML = this.activeVersions.map(version => this.renderVersionCard(version, false, true)).join('');
-        
+
         // Attach event listeners to action buttons
         this.attachVersionActionListeners();
     }
 
     renderDeactivatedVersions() {
         const container = document.getElementById('deactivatedVersions');
-        
+
         if (this.deactivatedVersions.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
@@ -244,7 +244,7 @@ class VersionControlApp {
         }
 
         container.innerHTML = this.deactivatedVersions.map(version => this.renderVersionCard(version, false, false)).join('');
-        
+
         // Attach event listeners to action buttons
         this.attachVersionActionListeners();
     }
@@ -252,7 +252,7 @@ class VersionControlApp {
     renderVersionCard(version, isPending, isActive = false) {
         const statusClass = version.status === 'pending' ? 'status-pending' : 'status-deactivated';
         const createdDate = new Date(version.created_at).toLocaleString();
-        
+
         return `
             <div class="bx--tile version-card ${statusClass}">
                 <div class="version-header">
@@ -264,7 +264,7 @@ class VersionControlApp {
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="version-details">
                     <div class="detail-row">
                         <span class="detail-label">Server Version:</span>
@@ -287,7 +287,7 @@ class VersionControlApp {
                         <span class="detail-value version-id">${version.id}</span>
                     </div>
                 </div>
-                
+
                 ${isPending ? `
                     <div class="version-actions">
                         <button class="bx--btn bx--btn--primary bx--btn--sm approve-btn" data-version-id="${version.id}" data-server-name="${version.server_name}">
@@ -390,7 +390,7 @@ class VersionControlApp {
 
         document.getElementById('confirmModalMessage').innerHTML = messages[action];
         document.getElementById('confirmModalHeading').textContent = `Confirm ${action.charAt(0).toUpperCase() + action.slice(1)}`;
-        
+
         this.currentAction = { action, versionId, serverName };
         this.showModal();
     }
@@ -398,7 +398,7 @@ class VersionControlApp {
     showModal() {
         const modal = document.getElementById('confirmModal');
         modal.classList.add('is-visible');
-        
+
         // Set up confirm button
         const confirmBtn = document.getElementById('confirmModalAction');
         confirmBtn.onclick = () => this.executeAction();
@@ -432,7 +432,7 @@ class VersionControlApp {
             );
 
             const result = await response.json();
-            
+
             if (result.success) {
                 this.showNotification(
                     `Successfully ${action}d version for ${serverName}`,
@@ -464,7 +464,7 @@ class VersionControlApp {
         }
 
         const response = await fetch(`${this.apiUrl}${endpoint}`, options);
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`HTTP ${response.status}: ${errorText}`);
@@ -492,10 +492,10 @@ class VersionControlApp {
         const toast = document.getElementById('notificationToast');
         const title = document.getElementById('notificationTitle');
         const messageEl = document.getElementById('notificationMessage');
-        
+
         // Set type class
         toast.className = `bx--toast-notification bx--toast-notification--${type}`;
-        
+
         // Set content
         const titles = {
             success: 'Success',
@@ -505,10 +505,10 @@ class VersionControlApp {
         };
         title.textContent = titles[type] || 'Notification';
         messageEl.textContent = message;
-        
+
         // Show toast
         toast.style.display = 'flex';
-        
+
         // Auto-hide after 5 seconds
         setTimeout(() => {
             toast.style.display = 'none';

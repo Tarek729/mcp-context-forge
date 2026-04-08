@@ -10,12 +10,12 @@ plugins:
     config:
       # Enable/disable the plugin
       enabled: true
-      
+
       # Main MCP Gateway database URL
       # This is where your gateways and tools are stored
       # Format: postgresql+psycopg://user:password@host:port/database
       main_db_url: "postgresql+psycopg://postgres:mysecretpassword@localhost:5433/mcp"
-      
+
       # Version Control database URL
       # This is a SEPARATE database for version history
       # Format: postgresql+psycopg://user:password@host:port/database

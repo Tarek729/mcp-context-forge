@@ -30,10 +30,10 @@ A standalone web application for managing MCP server version approvals in Contex
    ```bash
    # macOS
    open index.html
-   
+
    # Linux
    xdg-open index.html
-   
+
    # Windows
    start index.html
    ```

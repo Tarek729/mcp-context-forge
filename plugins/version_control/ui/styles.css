@@ -466,11 +466,11 @@ body {
     .bx--content {
         padding: 1.5rem 0;
     }
-    
+
     .stat-value {
         font-size: 2rem;
     }
-    
+
     .section-title {
         font-size: 1.5rem;
     }
@@ -480,31 +480,31 @@ body {
     .bx--content {
         padding: 1rem 0;
     }
-    
+
     .stats-row {
         margin-bottom: 1rem;
     }
-    
+
     .stat-tile {
         padding: 1rem;
     }
-    
+
     .stat-value {
         font-size: 1.75rem;
     }
-    
+
     .version-card {
         padding: 1rem;
     }
-    
+
     .version-actions {
         flex-direction: column;
     }
-    
+
     .version-actions button {
         width: 100%;
     }
-    
+
     #notificationToast {
         right: 0.5rem;
         left: 0.5rem;
@@ -528,7 +528,7 @@ body {
     #settingsPanel {
         display: none !important;
     }
-    
+
     .version-card {
         break-inside: avoid;
         page-break-inside: avoid;
@@ -544,15 +544,15 @@ body {
         --text-secondary: #c6c6c6;
         --border-color: #393939;
     }
-    
+
     .stat-tile {
         background: linear-gradient(135deg, var(--card-background) 0%, #2d2d2d 100%);
     }
-    
+
     .detail-row {
         border-bottom-color: #393939;
     }
-    
+
     .bx--form__helper-text code {
         background: #393939;
     }
