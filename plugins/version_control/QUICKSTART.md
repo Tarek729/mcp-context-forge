@@ -82,14 +82,14 @@ Check the database:
 
 ```bash
 docker exec mcp-postgres psql -U postgres -d mcp_version_control -c "
-  SELECT server_name, version_number, tools_count, is_current 
+  SELECT server_name, version_number, tools_count, is_current
   FROM server_versions;
 "
 ```
 
 Expected output:
 ```
-        server_name        | version_number | tools_count | is_current 
+        server_name        | version_number | tools_count | is_current
 ---------------------------+----------------+-------------+------------
  output-schema-test-server |              1 |           8 | t
  qr-code-server            |              1 |           4 | t
@@ -122,8 +122,8 @@ Your Version Control plugin is now:
 
 ```bash
 docker exec mcp-postgres psql -U postgres -d mcp_version_control -c "
-  SELECT server_name, version_number, tools_count, created_at 
-  FROM server_versions 
+  SELECT server_name, version_number, tools_count, created_at
+  FROM server_versions
   ORDER BY server_name, version_number;
 "
 ```
@@ -179,6 +179,6 @@ docker logs mcp-gateway | grep -i "backfill\|polling"
 
 ---
 
-**Estimated Setup Time**: 5 minutes  
-**Difficulty**: Easy  
+**Estimated Setup Time**: 5 minutes
+**Difficulty**: Easy
 **Prerequisites**: Basic Docker and PostgreSQL knowledge
